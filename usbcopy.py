@@ -10,10 +10,53 @@ from shutil import rmtree
 
 # This is the only area you should change
 
-sources = [ '/home/andy/Pictures', '/home/andy/Projects']
+sources = [ '/home/andy/Pictu', '/home/andy/Projects']
 
 # End 
 # TODO: Add to a config file so script never gets altered
+
+def freespace(p):
+	s = os.statvfs(p)
+	return (s.f_bsize * s.f_bavail)
+
+def totalspace(p):
+	s = os.statvfs(p)
+	return (s.f_bsize * s.f_blocks)
+
+def convert_bytes(bytes):
+    bytes = float(bytes)
+    if bytes >= 1099511627776:
+        terabytes = bytes / 1099511627776
+        size = '%.2fT' % terabytes
+    elif bytes >= 1073741824:
+        gigabytes = bytes / 1073741824
+        size = '%.2fG' % gigabytes
+    elif bytes >= 1048576:
+        megabytes = bytes / 1048576
+        size = '%.2fM' % megabytes
+    elif bytes >= 1024:
+        kilobytes = bytes / 1024
+        size = '%.2fK' % kilobytes
+    else:
+        size = '%.2fb' % bytes
+    return size
+    
+def reportspace(direc):
+    free = convert_bytes(freespace(direc))
+    total = convert_bytes(totalspace(direc))
+
+    print "Space available %s of %s" % (free, total)
+    
+def du_sk(start_path = '.'):
+    total_size = 0
+  
+    for dirpath, dirnames, filenames in os.walk(start_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if os.path.exists(fp):
+                total_size += os.stat(fp).st_size
+ 	  
+    return total_size    
 
 def GetDiskInfo():
     #Probes dbus to find any attached/mounted/unmount USB drives and mounts if found and unmounted
@@ -52,15 +95,22 @@ def backupops():
         for src in sources :
             extra_path = src.rsplit("/", 1)[1]
             full_dest = ''.join([dest, '/', extra_path])
-            print "Copying from %s to %s" % (src, full_dest)
-            copytree(src, full_dest)
-
+            
+            if os.path.isdir(src):
+                print "Copying %s from %s to %s" % (convert_bytes(du_sk(src)), src, full_dest)
+                copytree(src, full_dest)
+                print "Backed up %s to %s" % (convert_bytes(du_sk(full_dest)), full_dest)
+            else:
+                print "Can't find %s directory, skipping..." % (src)
+            
 
         bus = dbus.SystemBus()
         ud_manager_obj = bus.get_object("org.freedesktop.UDisks", "/org/freedesktop/UDisks")
         ud_manager = dbus.Interface(ud_manager_obj, 'org.freedesktop.UDisks') 
         dev = ud_manager.FindDeviceByDeviceFile(usb_disks.keys()[0]) 
         device_obj = bus.get_object("org.freedesktop.UDisks", dev) 
+        reportspace(usb_disks.values()[0])
+        
         device_obj.FilesystemUnmount([], dbus_interface='org.freedesktop.UDisks.Device')
         return 0
     else:  #If we don't have USB drives attached and mounted
